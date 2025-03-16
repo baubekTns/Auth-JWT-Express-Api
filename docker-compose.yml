@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    ports:
+      - "${HOST_PORT}:${PORT}"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+    depends_on:
+      - mongo
+    command: npm run dev # Run nodemon instead of plain Node.js
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  mongo:
+    image: mongo
+    ports:
+      - "${HOST_DB_PORT}:${DB_PORT}"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:
