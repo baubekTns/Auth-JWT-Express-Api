@@ -1,18 +1,13 @@
-# Use official Node.js image
-FROM node:23-alpine
+FROM node:22-alpine
 
-# Set working directory
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY package.json package-lock.json ./
-RUN npm install --production
+COPY package*.json ./
 
-# Copy the rest of the code
+RUN npm install
+
 COPY . .
 
-# Expose port
 EXPOSE 5000
 
-# Start the server
-CMD ["node", "server.js"]
+CMD ["npm", "run", "dev"]

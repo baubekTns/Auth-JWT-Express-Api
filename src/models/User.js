@@ -6,12 +6,15 @@ const userSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
     },
     email: {
       type: String,
       required: true,
       unique: true,
-      match: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, // Email format validation
+      lowercase: true,
+      trim: true,
+      match: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
     },
     password: {
       type: String,
@@ -27,7 +30,7 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true, // Auto-generate createdAt and updatedAt
-  }
+  },
 );
 
 // Password hashing before saving the user

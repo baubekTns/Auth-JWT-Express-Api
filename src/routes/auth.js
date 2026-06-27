@@ -1,13 +1,47 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
+
 const User = require("../models/User");
 const { protect } = require("../middleware/authMiddleware");
+
 const router = express.Router();
+
+const generateAccessToken = (user) => {
+  return jwt.sign(
+    {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || "15m",
+    },
+  );
+};
+
+const generateRefreshToken = (user) => {
+  return jwt.sign(
+    {
+      id: user._id,
+    },
+    process.env.REFRESH_SECRET,
+    {
+      expiresIn: process.env.REFRESH_EXPIRES_IN || "7d",
+    },
+  );
+};
+
+const getRefreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+});
 
 // @desc Get user profile
 // @route GET /api/auth/profile
-// @access Private (Requires Authentication)
+// @access Private
 router.get("/profile", protect, async (req, res) => {
   res.json({
     id: req.user.id,
@@ -21,21 +55,28 @@ router.get("/profile", protect, async (req, res) => {
 // @route POST /api/auth/register
 // @access Public
 router.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
-
-  if (!name || !email || !password) {
-    return res.status(400).json({ message: "Please fill in all fields" });
-  }
-
-  const userExists = await User.findOne({ email });
-  if (userExists) {
-    return res.status(400).json({ message: "User already exists" });
-  }
-
   try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        message: "Please fill in all fields",
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const userExists = await User.findOne({ email: normalizedEmail });
+
+    if (userExists) {
+      return res.status(409).json({
+        message: "User already exists",
+      });
+    }
+
     const user = new User({
-      name,
-      email,
+      name: name.trim(),
+      email: normalizedEmail,
       password,
     });
 
@@ -51,8 +92,11 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Register error:", error.message);
+
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 });
 
@@ -60,81 +104,88 @@ router.post("/register", async (req, res) => {
 // @route POST /api/auth/login
 // @access Public
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res
-      .status(400)
-      .json({ message: "Please provide both email and password" });
-  }
-
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+    const { email, password } = req.body;
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(401).json({ message: "Invalid credentials" });
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Please provide both email and password",
+      });
+    }
 
-    // Generate Access Token
-    const accessToken = jwt.sign(
-      { id: user._id, name: user.name, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" }
-    );
+    const normalizedEmail = email.toLowerCase().trim();
 
-    // Generate Refresh Token
-    const refreshToken = jwt.sign(
-      { id: user._id },
-      process.env.REFRESH_SECRET,
-      { expiresIn: "7d" }
-    );
+    const user = await User.findOne({ email: normalizedEmail });
 
-    // Store refresh token in DB
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
+    }
+
+    const isMatch = await user.matchPassword(password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
     user.refreshToken = refreshToken;
     await user.save();
 
-    // Set refresh token in an HTTP-only cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-    });
+    res.cookie("refreshToken", refreshToken, getRefreshCookieOptions());
 
-    res.json({ accessToken });
+    res.json({
+      accessToken,
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Login error:", error.message);
+
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 });
 
-// @desc Refresh token
+// @desc Refresh access token
 // @route POST /api/auth/refresh
 // @access Public
 router.post("/refresh", async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
-    if (!refreshToken)
-      return res.status(401).json({ message: "No refresh token" });
 
-    const user = await User.findOne({ refreshToken });
-    if (!user)
-      return res.status(403).json({ message: "Invalid refresh token" });
+    if (!refreshToken) {
+      return res.status(401).json({
+        message: "No refresh token",
+      });
+    }
 
-    jwt.verify(refreshToken, process.env.REFRESH_SECRET, (err, decoded) => {
-      if (err)
-        return res.status(403).json({ message: "Token expired or invalid" });
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
 
-      const accessToken = jwt.sign(
-        { id: user._id, name: user.name, email: user.email, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn: "15m" }
-      );
+    const user = await User.findOne({
+      _id: decoded.id,
+      refreshToken,
+    });
 
-      res.json({ accessToken });
+    if (!user) {
+      return res.status(403).json({
+        message: "Invalid refresh token",
+      });
+    }
+
+    const accessToken = generateAccessToken(user);
+
+    res.json({
+      accessToken,
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    return res.status(403).json({
+      message: "Token expired or invalid",
+    });
   }
 });
 
@@ -143,19 +194,30 @@ router.post("/refresh", async (req, res) => {
 // @access Public
 router.post("/logout", async (req, res) => {
   try {
-    if (req.user) {
-      await User.findByIdAndUpdate(req.user.id, { refreshToken: null }); // Remove refresh token
+    const refreshToken = req.cookies.refreshToken;
+
+    if (refreshToken) {
+      await User.findOneAndUpdate(
+        { refreshToken },
+        {
+          $unset: {
+            refreshToken: "",
+          },
+        },
+      );
     }
 
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      sameSite: "Strict",
-      secure: process.env.NODE_ENV === "production",
-    });
+    res.clearCookie("refreshToken", getRefreshCookieOptions());
 
-    res.json({ message: "Logged out successfully" });
+    res.json({
+      message: "Logged out successfully",
+    });
   } catch (error) {
-    res.status(500).json({ message: "Logout failed" });
+    console.error("Logout error:", error.message);
+
+    res.status(500).json({
+      message: "Logout failed",
+    });
   }
 });
 
