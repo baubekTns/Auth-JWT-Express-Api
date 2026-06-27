@@ -1,91 +1,176 @@
-# Auth-JWT-Express-Api
+# Auth JWT Express API
 
-# Authentication API
-
-## Overview
-
-This is a Node.js authentication API that includes user registration, login, JWT-based authentication, and refresh token handling. It uses MongoDB for storage and is containerized using Docker.
+A secure authentication API built with Node.js, Express, MongoDB, JWT, and Docker.
+The API supports user registration, login, protected routes, access-token authentication, refresh-token handling, and logout using HTTP-only cookies.
 
 ## Features
 
-- User authentication with **JWT access & refresh tokens**
-- Secure password hashing with **bcrypt**
-- Token storage in **HTTP-only cookies**
-- User session management with **refresh tokens**
-- Logout functionality
-- Dockerized setup with **Docker Compose**
+- User registration and login
+- Password hashing with bcrypt
+- JWT access tokens for protected routes
+- Refresh-token handling with HTTP-only cookies
+- Protected user profile endpoint
+- MongoDB persistence with Mongoose
+- Login rate limiting to reduce brute-force attempts
+- Docker and Docker Compose setup for local development
 
-## Technologies Used
+## Tech Stack
 
-- Node.js / Express.js
-- MongoDB / Mongoose
-- JSON Web Tokens (JWT)
+- Node.js
+- Express.js
+- MongoDB
+- Mongoose
+- JSON Web Tokens
 - bcrypt
-- dotenv
-- Cookie-based authentication
-- Docker & Docker Compose
+- cookie-parser
+- express-rate-limit
+- Docker
+- Docker Compose
 
 ## Getting Started
 
 ### Prerequisites
 
-Ensure you have the following installed:
+Install the following:
 
-- **Node.js** (latest LTS version recommended)
-- **MongoDB** (if running locally)
-- **Docker & Docker Compose** (for containerized setup)
+- Node.js LTS
+- MongoDB, if running locally without Docker
+- Docker and Docker Compose, if using the containerized setup
 
-### Installation
+### Environment Variables
 
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/baubekTns/Auth-JWT-Express-Api.git
-   cd Auth-JWT-Express-Api
-   ```
-2. Install dependencies:
-   ```sh
-   npm install
-   ```
-3. Create a `.env` file in the project root with these variables:
-   ```sh (Suggested ports)
-   PORT=5000
-   HOST_PORT=5050
-   DB_PORT=27017
-   HOST_DB_PORT=27017
-   MONGO_URI=your_mongodb_uri
-   NODE_ENV=development
-   JWT_SECRET=your_jwt_secret
-   REFRESH_SECRET=your_refresh_secret
-   ```
+Create a `.env` file in the project root:
 
-### Running Locally
+```env
+PORT=5000
+HOST_PORT=5050
 
-1. Start MongoDB (if not using Docker):
-   ```sh
-   mongod --dbpath ./data
-   ```
-2. Start the server:
-   ```sh
-   npm run dev
-   ```
+DB_PORT=27017
+HOST_DB_PORT=27017
 
-### Running with Docker
+MONGO_URI=mongodb://mongo:27017/auth-api
 
-1. Ensure Docker is installed and running.
-2. Start the services:
-   ```sh
-   docker-compose up --build
-   ```
-3. The API should be available at `http://localhost:${HOST_PORT}`
+NODE_ENV=development
+JWT_SECRET=your_access_token_secret
+REFRESH_SECRET=your_refresh_token_secret
+JWT_EXPIRES_IN=15m
+```
+
+## Running Locally
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start MongoDB locally, then run:
+
+```bash
+npm run dev
+```
+
+The API will run on:
+
+```txt
+http://localhost:5000
+```
+
+## Running with Docker
+
+Start the API and MongoDB containers:
+
+```bash
+docker-compose up --build
+```
+
+The API will be available at:
+
+```txt
+http://localhost:${HOST_PORT}
+```
+
+Example:
+
+```txt
+http://localhost:5050
+```
 
 ## API Endpoints
 
-### **Authentication Routes**
+All authentication routes are prefixed with:
 
-| Method | Endpoint    | Description         |
-| ------ | ----------- | ------------------- |
-| POST   | `/register` | Register a new user |
-| POST   | `/login`    | Authenticate a user |
-| POST   | `/refresh`  | Refresh JWT token   |
-| POST   | `/logout`   | Log out user        |
-| GET    | `/profile`  | Get user profile    |
+```txt
+/api/auth
+```
+
+| Method | Endpoint             | Description                                                | Access  |
+| ------ | -------------------- | ---------------------------------------------------------- | ------- |
+| POST   | `/api/auth/register` | Register a new user                                        | Public  |
+| POST   | `/api/auth/login`    | Login and receive an access token                          | Public  |
+| POST   | `/api/auth/refresh`  | Generate a new access token using the refresh-token cookie | Public  |
+| POST   | `/api/auth/logout`   | Clear the refresh-token cookie and end the session         | Public  |
+| GET    | `/api/auth/profile`  | Get the authenticated user's profile                       | Private |
+
+## Example Requests
+
+### Register
+
+```http
+POST /api/auth/register
+Content-Type: application/json
+```
+
+```json
+{
+  "name": "Example User",
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+### Login
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+Successful login returns an access token and sets a refresh token in an HTTP-only cookie.
+
+```json
+{
+  "accessToken": "jwt_access_token"
+}
+```
+
+### Get Profile
+
+```http
+GET /api/auth/profile
+Authorization: Bearer <access_token>
+```
+
+## Security Features
+
+- Passwords are hashed before being stored in MongoDB.
+- Refresh tokens are stored in HTTP-only cookies.
+- Access tokens are short-lived.
+- Login attempts are rate-limited.
+- Protected routes require a valid Bearer token.
+
+## Future Improvements
+
+- Store hashed refresh tokens instead of raw refresh tokens.
+- Add multi-device session management.
+- Add request validation with Zod or express-validator.
+- Add automated tests for authentication routes.
+- Restrict CORS using an environment-based client URL.
+- Add production-ready Docker configuration.
